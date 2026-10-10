@@ -9,3 +9,13 @@ dist/
 *.log
 __pycache__/
 .serena/
+
+# ROMs are the user's to supply and must never be committed.
+roms/
+*.bin
+*.mid
+*.MID
+*.rom
+ram_dump.bin
+boot.snap
+*.wav

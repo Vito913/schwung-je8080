@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build JP-8000 module for Schwung (ARM64)
+# Build JE-8080 (JP-8080) module for Schwung (ARM64)
 #
 # Uses CMake to build the gearmulator JE-8086 library and plugin wrapper.
 # Automatically uses Docker for cross-compilation if needed.
@@ -7,11 +7,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-IMAGE_NAME="schwung-jp8000-builder"
+IMAGE_NAME="schwung-je8080-builder"
 
 # Check if we need Docker
 if [ -z "$CROSS_PREFIX" ] && [ ! -f "/.dockerenv" ]; then
-    echo "=== JP-8000 Module Build (via Docker) ==="
+    echo "=== JE-8080 Module Build (via Docker) ==="
     echo ""
 
     # Build Docker image if needed
@@ -38,7 +38,7 @@ fi
 # === Actual build (runs in Docker or with cross-compiler) ===
 cd "$REPO_ROOT"
 
-echo "=== Building JP-8000 Module ==="
+echo "=== Building JE-8080 Module ==="
 
 # Create build directory
 mkdir -p build
@@ -53,35 +53,35 @@ cmake -B build \
 
 # Build plugin
 echo "Building plugin..."
-cmake --build build --target jp8000-move-plugin jp8000-dsp -j$(nproc) 2>&1
+cmake --build build --target jp8000-move-plugin je8080-dsp -j$(nproc) 2>&1
 
 # Package
 echo "Packaging..."
-mkdir -p dist/jp8000
+mkdir -p dist/je8080
 
 # Copy files to dist
-cat src/module.json > dist/jp8000/module.json
-cat src/help.json > dist/jp8000/help.json
-cat build/dsp.so > dist/jp8000/dsp.so
-chmod +x dist/jp8000/dsp.so
-cat build/jp8000-dsp > dist/jp8000/jp8000-dsp
-chmod +x dist/jp8000/jp8000-dsp
+cat src/module.json > dist/je8080/module.json
+cat src/help.json > dist/je8080/help.json
+cat build/dsp.so > dist/je8080/dsp.so
+chmod +x dist/je8080/dsp.so
+cat build/je8080-dsp > dist/je8080/je8080-dsp
+chmod +x dist/je8080/je8080-dsp
 
 # Asset directory placeholders (ROMs required, extra banks optional)
-mkdir -p dist/jp8000/roms dist/jp8000/banks
+mkdir -p dist/je8080/roms dist/je8080/banks
 
 # Create tarball for release
 cd dist
-tar -czvf jp8000-module.tar.gz jp8000/
+tar -czvf je8080-module.tar.gz je8080/
 cd ..
 
 echo ""
 echo "=== Build Complete ==="
-echo "Output: dist/jp8000/"
-echo "Tarball: dist/jp8000-module.tar.gz"
+echo "Output: dist/je8080/"
+echo "Tarball: dist/je8080-module.tar.gz"
 echo ""
 echo "To install on Move:"
 echo "  ./scripts/install.sh"
 echo ""
-echo "IMPORTANT: Place JP-8000 ROM .mid files in the roms/ directory on device:"
-echo "  /data/UserData/schwung/modules/sound_generators/jp8000/roms/"
+echo "IMPORTANT: Place the JP-8080 ROM (.bin, 917504 bytes) in the roms/ directory on device:"
+echo "  /data/UserData/schwung/modules/sound_generators/je8080/roms/"

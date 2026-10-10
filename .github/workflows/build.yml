@@ -26,15 +26,20 @@ jobs:
           git -C libs/gearmulator submodule update --init source/cpu/dsp56300 source/cpu/mc68k
           git -C libs/gearmulator/source/cpu/dsp56300 submodule update --init source/asmjit
 
+      # JE-8080: the synthetic boot block's runtime helpers, on jeLib's own
+      # H8S core. Needs only the dsp56300/h8s sources, no ROM.
+      - name: Boot block helper tests
+        run: ./tests/boot/run.sh
+
       - name: Build (cross-compiles to aarch64 in Docker)
         run: ./scripts/build.sh
 
       - name: Check the artifact is actually ARM64
         run: |
-          test -f dist/jp8000-module.tar.gz
-          file dist/jp8000/dsp.so | tee /dev/stderr | grep -q 'ARM aarch64'
+          test -f dist/je8080-module.tar.gz
+          file dist/je8080/dsp.so | tee /dev/stderr | grep -q 'ARM aarch64'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: jp8000-module
-          path: dist/jp8000-module.tar.gz
+          name: je8080-module
+          path: dist/je8080-module.tar.gz

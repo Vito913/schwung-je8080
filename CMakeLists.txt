@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(schwung-jp8000 VERSION 0.1.0 LANGUAGES C CXX)
+project(schwung-je8080 VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -103,8 +103,8 @@ set_target_properties(jp8000-move-plugin PROPERTIES
 
 # The DSP process (see spawn_dsp_process in jp8000_plugin.cpp). It links no
 # emulator code: it dlopens dsp.so and calls jp8000_child_entry.
-add_executable(jp8000-dsp src/dsp/jp8000_dsp_main.c)
-target_link_libraries(jp8000-dsp PRIVATE ${CMAKE_DL_LIBS})
+add_executable(je8080-dsp src/dsp/jp8000_dsp_main.c)
+target_link_libraries(je8080-dsp PRIVATE ${CMAKE_DL_LIBS})
 
 # ---- Benchmarks ----
 
@@ -219,4 +219,15 @@ target_include_directories(je_test_console PRIVATE ${GEARMULATOR_SOURCE})
 target_link_libraries(je_test_console PRIVATE jeLib synthLib baseLib)
 if(NOT APPLE)
     target_link_options(je_test_console PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
+# ---- je8080_boot_test: does a JP-8080 ROM boot, and does a note make sound? ----
+# je8080_boot_test <rom_dir> [max_steps]. Remaps the rack image the same way
+# the plugin does (see je8080_rack_image in jp8000_plugin.cpp), prints every
+# LCD change, plays a note on all 16 channels after 8 s and reports the peak.
+add_executable(je8080_boot_test src/tools/je8080_boot_test.cpp)
+target_include_directories(je8080_boot_test PRIVATE ${GEARMULATOR_SOURCE})
+target_link_libraries(je8080_boot_test PRIVATE jeLib synthLib baseLib)
+if(NOT APPLE)
+    target_link_options(je8080_boot_test PRIVATE -static-libstdc++ -static-libgcc)
 endif()

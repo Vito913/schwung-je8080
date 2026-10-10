@@ -60,6 +60,7 @@
  * parsing. Nothing in jp8000_banks.h runs on the SPI thread. */
 #include "jp8000_params.h"
 #include "jp8000_banks.h"
+#include "je8080_rack_image.h"
 
 /* Plugin API v2 */
 extern "C" {
@@ -141,10 +142,16 @@ enum {
 #define JP_TEMP_PART_LO     0x1100u
 #define JP_TEMP_PATCH_UP    0x4000u
 #define JP_TEMP_PATCH_LO    0x4200u
-#define JP_COMMON_LEN       36
-#define JP_PART_LEN         7
-#define JP_PATCH_LEN        239
-#define JP_TEMP_TOTAL_LEN   (JP_COMMON_LEN + 2 * JP_PART_LEN + 2 * JP_PATCH_LEN)  /* 528 */
+/* JE-8080 (JP-8080 rack). The rack's temp blocks are each a little LONGER
+ * than the keyboard's (jemiditypes.h DataLengthRack): common 37 vs 36, part
+ * 8 vs 7, patch 248 vs 239. With the keyboard sizes the image validated
+ * early and the rack-only tail bytes (voice modulator send, extra patch
+ * params) were silently dropped from state_get, so a restored set lost them.
+ * The image arrays (64 / 16 / 256) already have room. */
+#define JP_COMMON_LEN       37
+#define JP_PART_LEN         8
+#define JP_PATCH_LEN        248
+#define JP_TEMP_TOTAL_LEN   (JP_COMMON_LEN + 2 * JP_PART_LEN + 2 * JP_PATCH_LEN)  /* 549 */
 
 /* GRAM handoff ring (same as je_fork_shm.h but embedded in shm) */
 #define JE_GRAM_RING_CAP    1024
@@ -192,7 +199,7 @@ enum {
  * on core 3 for every other module's render (all of which runs in the SPI
  * callback there). */
 #define JE_MAX_STAGES       4
-#define JE_PIPELINE_FILE    "/data/UserData/schwung/jp8000_pipeline"
+#define JE_PIPELINE_FILE    "/data/UserData/schwung/je8080_pipeline"
 static const int JE_DEFAULT_BOUNDS[JE_MAX_STAGES - 1] = {1, 2, 0};
 static const int JE_DEFAULT_CORES[JE_MAX_STAGES]      = {3, 1, 2, 0};
 
@@ -246,14 +253,14 @@ static void pin_to_core(int core) {
  * kicks in. A `% 10000` uc-write log in stage 0 was exactly that — a 60-100 ms
  * all-stage freeze every few seconds that looked like an emulator stall.
  */
-#define JP8000_DEBUG_ARM_FILE "/data/UserData/schwung/jp8000_debug_on"
+#define JP8000_DEBUG_ARM_FILE "/data/UserData/schwung/je8080_debug_on"
 static FILE *g_vlog = nullptr;
 static int g_vlog_armed = -1;
 static void vlog(const char *fmt, ...) {
     if (g_vlog_armed < 0) g_vlog_armed = access(JP8000_DEBUG_ARM_FILE, F_OK) == 0 ? 1 : 0;
     if (!g_vlog_armed) return;
     if (!g_vlog) {
-        g_vlog = fopen("/data/UserData/jp8000_debug.log", "a");
+        g_vlog = fopen("/data/UserData/je8080_debug.log", "a");
         if (!g_vlog) return;
     }
     va_list ap;
@@ -490,7 +497,7 @@ static void uc_write_ring_push(je_stage_t *st, int asic, uint32_t addr, uint8_t 
 /* Experiment switch (not a setting): with this file present the pipeline is
  * never raised to the realtime class, so the in-host cost of SCHED_OTHER can
  * be measured against the FIFO 20 number above. */
-#define JP8000_SCHED_OTHER_ARM_FILE "/data/UserData/schwung/jp8000_sched_other_on"
+#define JP8000_SCHED_OTHER_ARM_FILE "/data/UserData/schwung/je8080_sched_other_on"
 /* Wait for a cross-process condition: spin briefly (the other side is one
  * sample away most of the time), then back off to usleep so an idle core is
  * not burned while the parent throttles on the audio ring.
@@ -833,7 +840,21 @@ struct jp8000_instance_t {
  * the last of them exits — and a second create_instance, from another slot
  * or from plugin_drive, reports an error instead of booting.
  */
+/* JE-8080: deliberately the SAME lock file as JE-8086. Both modules run the
+ * same three-stage pipeline, and two pipelines on one Move starve the UI
+ * (see CLAUDE.md), so the lock is per device, not per module. */
 #define JP8000_PIPELINE_LOCK "/data/UserData/schwung/jp8000.pipeline.lock"
+
+/* JE-8080 OUTPUT GATE. The JP-8080 firmware boots and runs here, but the
+ * rack's extra hardware (devices at 0x410000, 0x411000, 0x412000) is not
+ * emulated, and what reaches the DAC is a constant full-scale buzz rather than
+ * the voices (measured: RMS 24557 of 32767, harmonics of 88200/256 Hz, no
+ * pitch at the played note). So the module outputs SILENCE unless
+ * `touch /data/UserData/schwung/je8080_audio_on` -- checked at create, for
+ * development only, and loud. Peak/min in __status still report the raw
+ * signal so progress is measurable with the gate closed. */
+#define JE8080_AUDIO_ARM_FILE "/data/UserData/schwung/je8080_audio_on"
+static bool g_je8080_audio_on = false;
 
 
 /* =====================================================================
@@ -1034,13 +1055,17 @@ static jpbank::Preset preset_from_rom(const jeLib::Rom::Preset &p, bool is_perf)
 static void child_build_banks(jp8000_shm_t *shm, const jeLib::Rom &rom, child_banks_t &banks) {
     std::vector<std::vector<jeLib::Rom::Preset>> factory;
     rom.getPresets(factory);   /* returns false even on success; check sizes */
-    /* Keyboard ROM: [0] patches 1-64, [1] patches 65-128, [2] performances */
-    static const char *patch_bank_label[] = { "Factory A", "Factory B" };
+    /* Rack ROM (jeLib Rom::getPresets): 512 patches in eight banks of 64,
+     * then 256 performances in four banks of 64 -- [0..7] patches, [8..11]
+     * performances. A keyboard ROM is two and one; it never reaches here. */
+    const size_t patch_banks = rom.getDeviceType() == jeLib::DeviceType::Rack ? 8 : 2;
+    static const char *patch_bank_label[] = { "Factory A", "Factory B", "Factory C", "Factory D",
+                                              "Factory E", "Factory F", "Factory G", "Factory H" };
     for (size_t b = 0; b < factory.size(); b++) {
-        const bool is_perf = b >= 2;
+        const bool is_perf = b >= patch_banks;
         jpbank::Bank bank;
-        bank.name = is_perf ? (factory.size() > 3 ? "Factory " + std::to_string(b - 1) : "Factory")
-                            : (b < 2 ? patch_bank_label[b] : "Factory " + std::to_string(b + 1));
+        bank.name = is_perf ? "Factory Perf " + std::to_string(b - patch_banks + 1)
+                            : std::string(patch_bank_label[b]);
         bank.is_perf = is_perf;
         for (const auto &p : factory[b]) {
             jpbank::Preset pr = preset_from_rom(p, is_perf);
@@ -1329,13 +1354,21 @@ static void child_main(jp8000_shm_t *shm) {
     (void)chdir(roms_dir);
     synthLib::RomLoader::addSearchPath(std::string(roms_dir));
 
-    auto rom = jeLib::RomLoader::findROM();
+    /* JE-8080 takes the RACK firmware only. jeLib finds keyboard and rack
+     * ROMs alike (a 512 KB .bin or 8 .mid files is a JP-8000; a 896 KB .bin
+     * or 14 .mid files is a JP-8080), so pick the rack one explicitly: a
+     * JP-8000 image dropped in here by mistake would otherwise boot as a
+     * keyboard behind a rack-sized parameter layout. */
+    jeLib::Rom rom;
+    for (auto &r : jeLib::RomLoader::findROMs()) {
+        if (r.isValid() && r.getDeviceType() == jeLib::DeviceType::Rack) { rom = r; break; }
+    }
     if (!rom.isValid()) {
-        /* Name the count and the extension: the common failure is supplying
-         * some of the dump, not none of it, and "no ROM found" reads as "wrong
+        /* Name the size and the extension: the common failure is supplying
+         * the wrong unit's firmware, and "no ROM found" reads as "wrong
          * folder" to someone who has already put files there. */
         snprintf((char*)shm->load_error, sizeof(shm->load_error),
-                 "No JP-8000 ROM in roms/ - needs all 8 firmware .mid files");
+                 "No JP-8080 ROM in roms/ - needs a 917504-byte .bin (or the 14 .mid dump)");
         shm->initialized = 1; shm->loading_complete = 1;
         vlog("[child] no ROM found");
         return;
@@ -1351,11 +1384,19 @@ static void child_main(jp8000_shm_t *shm) {
     /* 2. Create Je8086 and try to load snapshot for instant boot */
     snprintf((char*)shm->loading_status, sizeof(shm->loading_status), "Creating emulator...");
     std::string ramFile = std::string(roms_dir) + "/ram_dump.bin";
-    auto *je = new jeLib::Je8086(rom.getData(), ramFile);
+    /* The rack image is the application only, linked at 0x10000; put our own
+     * boot block under it (je8080_rack_image.h, src/boot/je8080_boot.S). */
+    const std::vector<uint8_t> image = je8080::rack_boot_image(rom.getData());
+    if (image.empty()) {
+        snprintf((char*)shm->load_error, sizeof(shm->load_error), "JP-8080 ROM has an unexpected size");
+        shm->initialized = 1; shm->loading_complete = 1;
+        return;
+    }
+    auto *je = new jeLib::Je8086(image, ramFile);
 
     if (je->hasDoneFactoryReset()) {
         delete je;
-        je = new jeLib::Je8086(rom.getData(), ramFile);
+        je = new jeLib::Je8086(image, ramFile);
     }
 
     /* Try snapshot first — instant boot */
@@ -1751,7 +1792,7 @@ static void child_main(jp8000_shm_t *shm) {
  * same sets, when JE-8086 was swapped for a module that does not fork.
  *
  * posix_spawn is vfork + exec: nothing is shared with the host, so nothing
- * is copied. The helper (jp8000-dsp, beside dsp.so) dlopens this same dsp.so
+ * is copied. The helper (je8080-dsp, beside dsp.so) dlopens this same dsp.so
  * and calls jp8000_child_entry with the shm memfd on fd 3, so child_main and
  * everything after it -- including the stages, which still FORK, now from a
  * small process -- is unchanged.
@@ -1791,7 +1832,7 @@ static int fd_above_4(int fd) {
 static pid_t spawn_dsp_process(jp8000_instance_t *inst) {
     jp8000_shm_t *shm = inst->shm;
     char helper[sizeof(shm->module_dir) + 32], dsp[sizeof(shm->module_dir) + 32];
-    snprintf(helper, sizeof(helper), "%s/jp8000-dsp", (const char*)shm->module_dir);
+    snprintf(helper, sizeof(helper), "%s/je8080-dsp", (const char*)shm->module_dir);
     snprintf(dsp, sizeof(dsp), "%s/dsp.so", (const char*)shm->module_dir);
 
     const int shm_fd = fd_above_4(inst->shm_fd);
@@ -1829,7 +1870,7 @@ static pid_t spawn_dsp_process(jp8000_instance_t *inst) {
 
 static int fork_and_wait_child(jp8000_instance_t *inst) {
     jp8000_shm_t *shm = inst->shm;
-    fprintf(stderr, "JP-8000: fork_and_wait starting...\n");
+    fprintf(stderr, "JE-8080: fork_and_wait starting...\n");
     vlog("fork_and_wait: forking child for DSP...");
 
     inst->pipeline_lock_fd = open(JP8000_PIPELINE_LOCK, O_RDWR | O_CREAT | O_CLOEXEC, 0666);
@@ -1837,7 +1878,7 @@ static int fork_and_wait_child(jp8000_instance_t *inst) {
         close(inst->pipeline_lock_fd);
         inst->pipeline_lock_fd = -1;
         snprintf((char*)shm->load_error, sizeof(shm->load_error),
-                 "JE-8086 is already running in another slot (one per device)");
+                 "JE-8080 or JE-8086 already running in another slot (one per device)");
         shm->initialized = 1; shm->loading_complete = 1;
         return -1;
     }
@@ -1921,9 +1962,9 @@ static void raise_pipeline(jp8000_instance_t *inst) {
 
 static void* boot_thread_func(void *arg) {
     jp8000_instance_t *inst = (jp8000_instance_t*)arg;
-    fprintf(stderr, "JP-8000: boot thread starting, module_dir=%s\n", inst->shm->module_dir);
+    fprintf(stderr, "JE-8080: boot thread starting, module_dir=%s\n", inst->shm->module_dir);
     const int rc = fork_and_wait_child(inst);
-    fprintf(stderr, "JP-8000: boot thread done, ready=%d error=%s\n",
+    fprintf(stderr, "JE-8080: boot thread done, ready=%d error=%s\n",
             inst->shm->child_ready, inst->shm->load_error);
     if (rc == 0) {
         /* The state the chain host handed us seconds ago, now that there is
@@ -1950,7 +1991,7 @@ static void* boot_thread_func(void *arg) {
              * answers must still yield a usable slot. */
             jp8000_shm_t *sh = inst->shm;
             for (int i = 0; i < 400 && sh->temp_pending && !sh->child_shutdown; i++) usleep(10000);
-            fprintf(stderr, "JP-8000: state restore %s\n",
+            fprintf(stderr, "JE-8080: state restore %s\n",
                     sh->temp_pending ? "NOT confirmed by the firmware (timed out)"
                                      : "confirmed by the firmware");
         } else {
@@ -1970,7 +2011,7 @@ static void* boot_thread_func(void *arg) {
     if (inst->trace_on && inst->trace) {
         struct sched_param sp; sp.sched_priority = 0;
         pthread_setschedparam(pthread_self(), SCHED_OTHER, &sp);
-        FILE *tf = fopen("/data/UserData/schwung/jp8000_midi_trace.log", "w");
+        FILE *tf = fopen("/data/UserData/schwung/je8080_midi_trace.log", "w");
         unsigned last = 0;
         while (tf && !inst->trace_stop) {
             const unsigned w = inst->trace_w;
@@ -2013,7 +2054,7 @@ static void* v2_create_instance(const char *module_dir, const char *json_default
     /* MIDI trace, off unless armed by a file (house style: every diagnostic
      * switch off by default). Allocated here, on the control thread. */
     if (inst) {
-        inst->trace_on = access("/data/UserData/schwung/jp8000_midi_trace_on", F_OK) == 0
+        inst->trace_on = access("/data/UserData/schwung/je8080_midi_trace_on", F_OK) == 0
                        || getenv("JP_MIDI_TRACE") != nullptr;
         if (inst->trace_on) {
             inst->trace = (jp8000_instance_t::midi_trace_ev*)
@@ -2027,7 +2068,7 @@ static void* v2_create_instance(const char *module_dir, const char *json_default
     /* A memfd rather than anonymous shared memory: the DSP process is
      * spawned and exec'd (see spawn_dsp_process), so it can only reach this
      * block through a descriptor it is handed. */
-    inst->shm_fd = memfd_create("jp8000-shm", MFD_CLOEXEC);
+    inst->shm_fd = memfd_create("je8080-shm", MFD_CLOEXEC);
     if (inst->shm_fd < 0 || ftruncate(inst->shm_fd, sizeof(jp8000_shm_t)) != 0) {
         if (inst->shm_fd >= 0) close(inst->shm_fd);
         free(inst);
@@ -2049,7 +2090,10 @@ static void* v2_create_instance(const char *module_dir, const char *json_default
     inst->shm->perf_bank_cur = -1;
     strncpy((char*)inst->shm->module_dir, module_dir, sizeof(inst->shm->module_dir) - 1);
 
-    fprintf(stderr, "JP-8000: creating instance from %s\n", module_dir);
+    fprintf(stderr, "JE-8080: creating instance from %s\n", module_dir);
+    g_je8080_audio_on = access(JE8080_AUDIO_ARM_FILE, F_OK) == 0
+                        || getenv("JE8080_AUDIO_ON") != nullptr;   /* host-side tests */
+    fprintf(stderr, "JE-8080: output %s\n", g_je8080_audio_on ? "ON (development)" : "gated (silent)");
     snprintf((char*)inst->shm->loading_status, sizeof(inst->shm->loading_status), "Initializing...");
 
     inst->boot_thread_running = 1;
@@ -2068,7 +2112,7 @@ static void v2_destroy_instance(void *instance) {
     jp8000_instance_t *inst = (jp8000_instance_t*)instance;
     if (inst) inst->trace_stop = 1;
     if (!inst) return;
-    fprintf(stderr, "JP-8000: destroying\n");
+    fprintf(stderr, "JE-8080: destroying\n");
 
     if (inst->shm) inst->shm->child_shutdown = 1;
 
@@ -2097,7 +2141,7 @@ static void v2_destroy_instance(void *instance) {
     if (inst->shm_fd >= 0) close(inst->shm_fd);
 
     free(inst);
-    fprintf(stderr, "JP-8000: destroyed\n");
+    fprintf(stderr, "JE-8080: destroyed\n");
 }
 
 static void v2_on_midi(void *instance, const uint8_t *msg, int len, int source) {
@@ -2657,7 +2701,7 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
                         (!shm->loading_complete && !shm->load_error[0]) ? 1 : 0);
     /* The name the editor puts in its header and its announcement; without it
      * enterComponentEditFallback announces the raw component key. */
-    if (strcmp(key, "name") == 0) return snprintf(buf, buf_len, "JE-8086");
+    if (strcmp(key, "name") == 0) return snprintf(buf, buf_len, "JE-8080");
 
     if (!inst->ui_ready) {
         /* Not a value yet — a read that cannot be answered is -1, never
@@ -2815,8 +2859,9 @@ static int v2_get_param(void *instance, const char *key, char *buf, int buf_len)
         /* Per-stage sample counters, so a stall can be pinned on the stage
          * that stopped rather than read off the ring alone. */
         int n = snprintf(buf, buf_len,
-            "{\"status\":\"ready\",\"message\":\"JE-8086 Ready\","
+            "{\"status\":\"ready\",\"message\":\"%s\","
             "\"ring\":%d,\"underruns\":%d,\"midi\":%d,\"peak\":%d,\"min\":%d,\"produced\":[",
+            g_je8080_audio_on ? "JE-8080 Ready (dev audio ON)" : "JE-8080 booted - audio not emulated yet",
             audio_ring_available(shm), shm->underrun_count, shm->midi_count,
             shm->out_peak, shm->out_min);
         for (int s = 0; s < shm->num_stages && n < buf_len; s++)
@@ -2836,6 +2881,7 @@ static int v2_get_error(void *instance, char *buf, int buf_len) {
         return snprintf(buf, buf_len, "%s", inst->shm->load_error);
     return 0;
 }
+
 
 static void v2_render_block(void *instance, int16_t *out, int frames) {
     jp8000_instance_t *inst = (jp8000_instance_t*)instance;
@@ -2897,6 +2943,7 @@ static void v2_render_block(void *instance, int16_t *out, int frames) {
         shm->underrun_count++;
         memset(out + out_idx * 2, 0, (frames - out_idx) * 2 * sizeof(int16_t));
     }
+    if (!g_je8080_audio_on) memset(out, 0, frames * 2 * sizeof(int16_t));
     shm->render_count++;
 }
 

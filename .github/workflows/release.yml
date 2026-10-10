@@ -27,24 +27,24 @@ jobs:
 
       - name: Check the artifact is actually ARM64
         run: |
-          test -f dist/jp8000-module.tar.gz
-          file dist/jp8000/dsp.so | tee /dev/stderr | grep -q 'ARM aarch64'
-          # The DSP process the plugin spawns. Without it JE-8086 cannot start.
-          file dist/jp8000/jp8000-dsp | tee /dev/stderr | grep -q 'ARM aarch64'
-          tar tzf dist/jp8000-module.tar.gz | grep -q '^jp8000/jp8000-dsp$'
-          # The tarball must contain a top-level jp8000/ or the Module Store
+          test -f dist/je8080-module.tar.gz
+          file dist/je8080/dsp.so | tee /dev/stderr | grep -q 'ARM aarch64'
+          # The DSP process the plugin spawns. Without it JE-8080 cannot start.
+          file dist/je8080/je8080-dsp | tee /dev/stderr | grep -q 'ARM aarch64'
+          tar tzf dist/je8080-module.tar.gz | grep -q '^je8080/je8080-dsp$'
+          # The tarball must contain a top-level je8080/ or the Module Store
           # extracts into the wrong place.
-          tar tzf dist/jp8000-module.tar.gz | head -1 | grep -q '^jp8000/'
+          tar tzf dist/je8080-module.tar.gz | head -1 | grep -q '^je8080/'
           # ROMs are the user's to supply and must never ship.
-          ! tar tzf dist/jp8000-module.tar.gz | grep -qE 'roms/.+\.(mid|bin)$'
+          ! tar tzf dist/je8080-module.tar.gz | grep -qE 'roms/.+\.(mid|bin)$'
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/jp8000-module.tar.gz \
+          gh release create "${GITHUB_REF_NAME}" dist/je8080-module.tar.gz \
             --title "${GITHUB_REF_NAME}" --generate-notes || \
-          gh release upload "${GITHUB_REF_NAME}" dist/jp8000-module.tar.gz --clobber
+          gh release upload "${GITHUB_REF_NAME}" dist/je8080-module.tar.gz --clobber
 
       # release.json is what the Module Store reads to decide a version is
       # available. Without this step a tagged release is invisible to it.
@@ -53,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/jp8000-module.tar.gz"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/je8080-module.tar.gz"
           printf '{\n  "version": "%s",\n  "download_url": "%s"\n}\n' "$VER" "$URL" > release.json
           if ! git diff --quiet release.json; then
             git config user.name  "github-actions[bot]"

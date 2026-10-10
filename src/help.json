@@ -1,25 +1,22 @@
 {
-  "title": "JE-8086",
+  "title": "JE-8080",
   "children": [
     {
       "title": "Overview",
       "lines": [
-        "JE-8086",
-        "analog-modelling",
-        "synth emulator",
-        "(Gearmulator).",
+        "JE-8080 (experimental)",
+        "Roland JP-8080 rack",
+        "emulator, built on",
+        "JE-8086 (Gearmulator).",
         "",
-        "Home of the SuperSaw.",
-        "8-voice polyphony.",
+        "STATUS: boots the",
+        "JP-8080 firmware and",
+        "takes MIDI. Rack-only",
+        "chips are not yet",
+        "emulated, so audio",
+        "is MUTED for now.",
         "",
-        "Three modes:",
-        " Patch: one sound,",
-        "  Upper/Lower/Both",
-        " Performance: two",
-        "  parts, split or",
-        "  layer, arpeggiator",
-        " System: MIDI and",
-        "  keyboard settings"
+        "Not for playing yet."
       ]
     },
     {
@@ -28,27 +25,30 @@
         {
           "title": "ROM Files",
           "lines": [
-            "Requires the JP-8000",
-            "v1.5 firmware dump:",
-            "all 8 .mid files in",
-            "the roms/ folder.",
+            "Needs the JP-8080",
+            "firmware as one .bin",
+            "file, 917,504 bytes",
+            "(v1.04 tested).",
             "",
             "Upload via Schwung",
             "Manager > Modules >",
-            "JE-8086 > Assets."
+            "JE-8080 > ROMs.",
+            "",
+            "A JP-8000 ROM will",
+            "not load here."
           ]
         },
         {
           "title": "CPU",
           "lines": [
-            "The emulator runs as",
-            "three pipelined",
-            "stages on cores",
-            "0-2, kept off the",
-            "audio core.",
+            "Same three-stage",
+            "pipeline as JE-8086,",
+            "cores 0-2.",
             "",
-            "Only ONE JE-8086",
-            "can run at a time."
+            "Only ONE JE-8080",
+            "or JE-8086 can run",
+            "at a time (shared",
+            "lock)."
           ]
         }
       ]

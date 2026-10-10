@@ -1,4 +1,25 @@
-# schwung-jp8000
+# schwung-je8080 (JE-8080, experimental)
+
+**This repo is JE-8080, a JP-8080 (rack) variant of schwung-je8086.** Read
+README.md first: what works, what does not, and why the rack image needs the
+synthetic boot block in `src/boot/je8080_boot.S`. Everything below this
+section is the JE-8086 design notes it inherits; it still describes the
+pipeline, banks and state handling, which are shared. Differences:
+
+- module id `je8080`, DSP helper binary `je8080-dsp`, debug/arm files
+  `je8080_*`; the pipeline LOCK is deliberately shared with JE-8086
+- only a RACK ROM is accepted (`findROMs()` filtered on `DeviceType::Rack`)
+- temp image sizes are the rack's: common 37, part 8, patch 248 (549 total)
+- factory banks: 8 x 64 patches, then 4 x 64 performances
+- output is GATED to silence unless `/data/UserData/schwung/je8080_audio_on`
+  exists (or `JE8080_AUDIO_ON` is set for host tests): the rack's extra chips
+  at 0x410000 / 0x411000 / 0x412000 are not emulated and the raw output is a
+  full-scale buzz
+- never commit ROMs (`roms/`, `*.bin`, `*.mid`, `*.rom` are git-ignored)
+
+---
+
+# (inherited) schwung-jp8000
 
 Roland JP-8000 emulator for Schwung/Move, based on gearmulator's JE-8086 engine.
 
@@ -555,9 +576,9 @@ docker run --rm -v "$(pwd):/build" -w /build schwung-jp8000-builder \
 
 ## ROMs
 
-Requires JP-8000 v1.5 firmware ROM files (.mid). Place all 8 files in the `roms/` directory on device:
+JE-8080: the JP-8080 firmware as one 917,504-byte `.bin` (v1.04 tested), in:
 ```
-/data/UserData/schwung/modules/sound_generators/jp8000/roms/
+/data/UserData/schwung/modules/sound_generators/je8080/roms/
 ```
 
 ## Key Files

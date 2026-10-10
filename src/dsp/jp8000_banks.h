@@ -179,9 +179,9 @@ static inline std::string name_from(const Msg *offset0) {
     return s;
 }
 
-/* Keyboard temp patch is 239 bytes; anything beyond (JP-8080's second block
- * at linear 242) would land past the temp patch and is dropped. */
-static const uint32_t PATCH_LINEAR_LEN = 239;
+/* JE-8080: the rack's temp patch is 248 bytes (keyboard: 239). Keyboard
+ * dumps are shorter and load as they are; rack dumps now keep their tail. */
+static const uint32_t PATCH_LINEAR_LEN = 248;
 
 /* Group by (area, program) in order of first appearance -- and START A NEW
  * GROUP when a program's FIRST BLOCK arrives a second time.

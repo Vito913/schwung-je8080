@@ -1,10 +1,10 @@
 {
-    "id": "jp8000",
-    "name": "JE-8086",
-    "abbrev": "JP",
-    "version": "0.5.6",
-    "description": "JE-8086 SuperSaw synth emulator (Gearmulator)",
-    "author": "dsp56300/gearmulator (port: charlesvestal)",
+    "id": "je8080",
+    "name": "JE-8080 (experimental)",
+    "abbrev": "J8",
+    "version": "0.1.0",
+    "description": "EXPERIMENTAL Roland JP-8080 rack emulator built on the JE-8086 module. Boots JP-8080 firmware v1.04 and takes MIDI, but the rack-only hardware is not emulated yet, so the output is muted. For development, not for playing.",
+    "author": "dsp56300/gearmulator, JE-8086 port by charlesvestal (JE-8080: vito913)",
     "dsp": "dsp.so",
     "api_version": 2,
     "standalone": false,
@@ -13,67 +13,18 @@
             "path": "roms",
             "label": "ROMs",
             "extensions": [
+                ".bin",
                 ".mid"
             ],
-            "description": "Requires the 8 .mid files of a JP-8000 v1.5 firmware bulk dump, 79,372 bytes each. A Roland dump names them _00001.mid to _00008.mid; the loader finds them by size, so other names still work but cannot be verified here.",
-            "hint": "The emulator runs as three pipelined stages on cores 0-2, off the audio core. Only one JE-8086 can run at a time.",
-            "hint_url": "https://github.com/charlesvestal/schwung-jp8000",
+            "description": "Requires the JP-8080 firmware as one 917,504-byte .bin flash image (v1.04 tested). A 14-file JP-8080 .mid update dump (79,373 bytes each) also loads. A JP-8000 ROM will NOT load here: use JE-8086 for that.",
+            "hint": "Runs the same three-stage pipeline as JE-8086 and shares its lock: only one JE-8080 or JE-8086 can run at a time.",
+            "hint_url": "https://github.com/vito913/schwung-je8080",
             "hint_url_label": "Read more",
             "files": [
                 {
-                    "filename": "_00001.mid",
-                    "label": "Firmware 1 of 8",
-                    "size": 79372,
-                    "crc32": "3DB23BE1",
-                    "required": true
-                },
-                {
-                    "filename": "_00002.mid",
-                    "label": "Firmware 2 of 8",
-                    "size": 79372,
-                    "crc32": "EA24A770",
-                    "required": true
-                },
-                {
-                    "filename": "_00003.mid",
-                    "label": "Firmware 3 of 8",
-                    "size": 79372,
-                    "crc32": "D82A058D",
-                    "required": true
-                },
-                {
-                    "filename": "_00004.mid",
-                    "label": "Firmware 4 of 8",
-                    "size": 79372,
-                    "crc32": "B552CF94",
-                    "required": true
-                },
-                {
-                    "filename": "_00005.mid",
-                    "label": "Firmware 5 of 8",
-                    "size": 79372,
-                    "crc32": "DD568E7D",
-                    "required": true
-                },
-                {
-                    "filename": "_00006.mid",
-                    "label": "Firmware 6 of 8",
-                    "size": 79372,
-                    "crc32": "B8323722",
-                    "required": true
-                },
-                {
-                    "filename": "_00007.mid",
-                    "label": "Firmware 7 of 8",
-                    "size": 79372,
-                    "crc32": "11DAAB09",
-                    "required": true
-                },
-                {
-                    "filename": "_00008.mid",
-                    "label": "Firmware 8 of 8",
-                    "size": 79372,
-                    "crc32": "440A3458",
+                    "filename": "jp8080.bin",
+                    "label": "JP-8080 firmware (.bin)",
+                    "size": 917504,
                     "required": true
                 }
             ]
@@ -104,7 +55,7 @@
         "component_type": "sound_generator",
         "forks_processes": true
     },
-    "_chain_params_note": "Fallback only. The live contract (169 params + bank enums) is served by get_param('chain_params') in dsp/jp8000_plugin.cpp, generated from tools/gen_params.py into dsp/jp8000_params.h. Keys and ranges here mirror the patch_main knobs.",
+    "_chain_params_note": "Fallback only. The live contract (169 params + bank enums) is served by get_param('chain_params') in dsp/jp8000_plugin.cpp, generated from tools/gen_params.py into dsp/jp8000_params.h (shared with JE-8086). Keys and ranges here mirror the patch_main knobs.",
     "chain_params": [
         {
             "key": "mode",
