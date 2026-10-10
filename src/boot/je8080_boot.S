@@ -10,7 +10,8 @@
 ;   3. six compiler runtime helpers at 0xA000-0xA0D2 (about 2,000 call sites)
 ;   4. the init routine of task 3 in the app's task table (0x587E)
 ;
-; This file provides all four. It is written from what the application expects
+; This file provides all four. Task 3 also calls at least seven more
+; boot-block routines whose behaviour is unknown; they return immediately. It is written from what the application expects
 ; of each entry point (arguments, results, which registers survive, stack
 ; layout), worked out from the call sites and from the JP-8000's matching
 ; library at 0x3000. No byte of it is copied from a Roland ROM.
@@ -72,12 +73,42 @@ sci0_rxi:
         push.l  er0
         jmp     @APP_SCI_RXI:24
 
+; ---------------------------------------------------------------- data
+; The app's C runtime copies these ranges out of the boot block into RAM
+; (0x207518-0x20755A). Their real contents are unknown; zero, not RTS fill.
+        .org    0x29D2
+        .fill   64, 1, 0
+        .org    0x8EAC
+        .fill   2, 1, 0
+
+; ---------------------------------------------------------------- unknown
+; Boot-block routines the app calls whose real behaviour is unknown, mostly
+; from task 3 (0x5D4A0-0x5D8DC) and one from 0x56B84. Each returns at once.
+; Every other unused byte of this block is RTS fill too (tools/gen_boot_header.sh),
+; so a call to any address we have not met returns instead of sliding through
+; empty memory into whatever code comes next.
+        .org    0x3908
+        rts                             ; from 0x5D4A0
+        .org    0x3A36
+        rts                             ; from 0x5D4E4
+        .org    0x3A64
+        rts                             ; from 0x5D51E
+        .org    0x43EC
+        rts                             ; from 0x5D77C
+        .org    0x44AA
+        rts                             ; from 0x5D800
+
 ; ---------------------------------------------------------------- task 3
 ; The app's task table (v1.04: 0x5E4D8) gives task 3 an init routine in the
 ; boot block. Its task body is in the app; the init is a no-op here.
         .org    0x587E
 task3_init:
         rts
+
+        .org    0x8C28
+        rts                             ; from 0x56B84, 0x5D87E (task 3)
+        .org    0x8C86
+        rts                             ; from 0x5D8D0, 0x5D8DC (task 3)
 
 ; ---------------------------------------------------------------- runtime
 ; Entry points the application calls. Each is a JMP to the implementation

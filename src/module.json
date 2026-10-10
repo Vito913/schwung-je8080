@@ -16,7 +16,7 @@
                 ".bin",
                 ".mid"
             ],
-            "description": "Requires the JP-8080 firmware as one 917,504-byte .bin flash image (v1.04 tested). A 14-file JP-8080 .mid update dump (79,373 bytes each) also loads. A JP-8000 ROM will NOT load here: use JE-8086 for that.",
+            "description": "Requires the JP-8080 firmware as one 917,504-byte .bin flash image (v1.04 tested). A 14-file JP-8080 .mid update dump (79,373 bytes each) should also load (untested). A JP-8000 ROM will NOT load here: use JE-8086 for that.",
             "hint": "Runs the same three-stage pipeline as JE-8086 and shares its lock: only one JE-8080 or JE-8086 can run at a time.",
             "hint_url": "https://github.com/vito913/schwung-je8080",
             "hint_url_label": "Read more",

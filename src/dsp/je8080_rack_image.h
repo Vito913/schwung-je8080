@@ -51,7 +51,10 @@ static constexpr size_t   kRackImageSize = 917504;   // jeLib::Rom::RomSizeRack
  * jeLib::Je8086. Empty if the input is not a rack image. */
 static inline std::vector<uint8_t> rack_boot_image(const std::vector<uint8_t> &rom) {
     if (rom.size() != kRackImageSize || kBootBlockLen > kAppBase) return {};
-    std::vector<uint8_t> m(kAppBase + rom.size(), 0xFF);   // erased flash reads 0xFF
+    std::vector<uint8_t> m(kAppBase + rom.size());
+    /* Pad the boot block past its assembled end with RTS (0x54 0x70), like
+     * its own gaps: an app call into an address we do not provide returns. */
+    for (uint32_t a = 0; a < kAppBase; a += 2) { m[a] = 0x54; m[a + 1] = 0x70; }
     std::copy(kBootBlock, kBootBlock + kBootBlockLen, m.begin());
     std::copy(rom.begin(), rom.end(), m.begin() + kAppBase);
     return m;

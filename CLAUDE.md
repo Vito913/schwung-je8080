@@ -15,6 +15,11 @@ pipeline, banks and state handling, which are shared. Differences:
   exists (or `JE8080_AUDIO_ON` is set for host tests): the rack's extra chips
   at 0x410000 / 0x411000 / 0x412000 are not emulated and the raw output is a
   full-scale buzz
+- the boot block (`src/boot/je8080_boot.S`) fills every unused byte with RTS:
+  task 3 calls boot routines we do not have (0x3908, 0x3A36, 0x3A64, 0x43EC,
+  0x44AA, 0x8C28, 0x8C86) and they must return, not slide into other code.
+  Regenerate the header with `tools/gen_boot_header.sh`, test with
+  `tests/boot/run.sh`
 - never commit ROMs (`roms/`, `*.bin`, `*.mid`, `*.rom` are git-ignored)
 
 ---
